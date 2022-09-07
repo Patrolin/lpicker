@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<head>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+        }
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+        }
+        body {
+            background: #fefefe;
+            font-family: sans-serif;
+            font-size: 14px;
+            --input-size: 256px;
+            --display-width: 256px;
+            --display-height: 36px;
+        }
+        column {
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+        row {
+            padding: 0;
+            display: flex;
+        }
+        [gaps] {
+            gap: 8px;
+        }
+        input {
+            width: var(--input-size);
+        }
+        [full-height] {
+            height: 100%;
+        }
+        [space-around] {
+            justify-content: space-around;
+        }
+        .display {
+            height: 32px;
+        }
+    </style>
+    <script>
+        color_rgb = [-1, -1, -1];
+        color_cvh = [-1, -1, -1];
+        LIGHT_H = 80;
+        DARK_H = 300;
+        SHADE_GAMMA = 2.2;
+        q = (s) => document.querySelector(s);
+        qq = (s) => [...document.querySelectorAll(s)];
+        lerp = (t, x, y) => x * (1 - t) + y * t;
+        lerp_mod = (t, x, y, n) => mod(lerp(t, x + ((x - y) ** 2 > (n / 2) ** 2) * n, y), n);
+        rem = (a, b) => a % b;
+        mod = (a, b) => rem(rem(a, b) + b, b);
+        function RGB_to_CVH(r, g, b) {
+            let v = Math.max(r, g, b);
+            let c = v - Math.min(r, g, b);
+            let h =
+                v === r //
+                    ? ((g - b) / (c || 1)) * 60
+                    : v == g
+                    ? ((b - r) / c + 2) * 60
+                    : ((r - g) / c + 4) * 60;
+            return [c, v, mod(h, 360)];
+        }
+        function CVH_to_RGB(c, v, h) {
+            let h1 = h / 60;
+            let low = v - c;
+            let mid = lerp(Math.abs(mod(h1, 2) - 1), v, low);
+            switch (Math.floor(h1)) {
+                case 0:
+                    return [v, mid, low];
+                case 1:
+                    return [mid, v, low];
+                case 2:
+                    return [low, v, mid];
+                case 3:
+                    return [low, mid, v];
+                case 4:
+                    return [mid, low, v];
+                default:
+                    return [v, low, mid];
+            }
+        }
+        function RGB_to_CMYK(r, g, b) {
+            let k = 1 - Math.max(r, g, b);
+            let k1 = 1 - k,
+                k2 = k1 + (k1 === 0);
+            return [(k1 - r) / k2, (k1 - g) / k2, (k1 - b) / k2, k];
+        }
+        function CMYK_to_RGB(c, m, y, k) {
+            let k1 = 1 - k,
+                k2 = k1 + (k1 === 0);
+            return [k1 - c * k2, k1 - m * k2, k1 - y * k2];
+        }
+        function lighterShade() {
+            let [c, v, h] = color_cvh;
+            let c1 = (c / 255) ** (1 / SHADE_GAMMA);
+            c = lerp(0.5, c1, 0.0) ** SHADE_GAMMA * 255;
+            v = lerp(0.5, v, 255);
+            h = lerp_mod(0.05, h, LIGHT_H, 360);
+            console.log("-", color_cvh);
+            console.log("lighter", [c, v, h]);
+            return CVH_to_RGB(c, v, h);
+        }
+        function darkerShade() {
+            let [c, v, h] = color_cvh;
+            let c1 = (c / 255) ** (1 / SHADE_GAMMA);
+            c = lerp(0.5, c1, 1.0) ** SHADE_GAMMA * 255;
+            v = lerp(0.5, v, 0);
+            h = lerp_mod(0.05, h, DARK_H, 360);
+            console.log("darker", [c, v, h]);
+            return CVH_to_RGB(c, v, h);
+        }
+        function setup() {
+            setRGB(185, 75, 121);
+            //setRGB(96, 63, 179);
+        }
+        function showColor(id, r, g, b) {
+            let display = q(id);
+            display.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+        }
+        function showColors() {
+            for (let [i, slider] of qq(".rgb").entries()) slider.value = color_rgb[i];
+            let [c, v, h] = color_cvh;
+            q("#c").max = v;
+            let minWidth = 10;
+            q("#c").style.width = `calc(${v + 1 + minWidth} / ${256 + minWidth} * var(--input-size))`;
+            q("#c").style.visibility = v > 0 ? "visible" : "hidden";
+            for (let [i, slider] of qq(".cvh").entries()) slider.value = color_cvh[i];
+            showColor("#display", ...color_rgb);
+            showColor("#display-light", ...lighterShade());
+            showColor("#display-dark", ...darkerShade());
+        }
+        function setRGB(newR, newG, newB) {
+            color_rgb = [newR ?? color_rgb[0], newG ?? color_rgb[1], newB ?? color_rgb[2]];
+            color_cvh = RGB_to_CVH(...color_rgb);
+            showColors();
+        }
+        function setCVH(newC, newV, newH) {
+            let [c, v, h] = color_cvh;
+            if (newV != null) {
+                c = (c / (v || 1)) * (newV || 1);
+                v = newV;
+            }
+            if (newC != null) c = newC;
+            if (newH != null) h = newH;
+            color_cvh = [c, v, h];
+            color_rgb = CVH_to_RGB(...color_cvh);
+            showColors();
+        }
+        function setCMYK(newC, newM, newY, newK) {
+            // Todo
+        }
+        function copyToClipboard(display) {
+            let backgroundColor = getComputedStyle(display).backgroundColor;
+            let [_, r, g, b] = backgroundColor.match(/rgb\((\d+), (\d+), (\d+)\)/);
+            let text = "#" + [r, g, b].map((v) => (+v).toString(16).padStart(2, "0")).join("");
+            navigator.clipboard.writeText(text);
+        }
+    </script>
+</head>
+<body>
+    <column full-height space-around>
+        <column gaps>
+            <column>
+                <div class="display" id="display-light" onClick="copyToClipboard(this)"></div>
+                <div class="display" id="display" onClick="copyToClipboard(this)"></div>
+                <div class="display" id="display-dark" onClick="copyToClipboard(this)"></div>
+            </column>
+            <row gaps>
+                <column gaps>
+                    <span><input class="rgb" type="range" min="0" max="255" onInput="setRGB(+this.value, null, null)" /> R</span>
+                    <span><input class="rgb" type="range" min="0" max="255" onInput="setRGB(null, +this.value, null)" /> G</span>
+                    <span><input class="rgb" type="range" min="0" max="255" onInput="setRGB(null, null, +this.value)" /> B</span>
+                </column>
+                <column gaps>
+                    <span><input class="cvh" id="c" type="range" min="0" max="255" onInput="setCVH(+this.value, null, null)" /> C</span>
+                    <span><input class="cvh" type="range" min="0" max="255" onInput="setCVH(null, +this.value, null)" /> V</span>
+                    <span><input class="cvh" type="range" min="0" max="360" onInput="setCVH(null, null, +this.value)" /> H</span>
+                </column>
+            </row>
+        </column>
+    </column>
+    <script>
+        setup();
+    </script>
+</body>
